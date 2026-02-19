@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = ["counter_service", "facade_service", "logging_service"]
+
+[workspace.dependencies]
+axum = { version = "0.8" }
+tracing = { version = "0.1" }
+thiserror = { version = "2.0.18" }
