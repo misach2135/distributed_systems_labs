@@ -1,16 +1,18 @@
-# Load tests
+# Integration tests
+
+## Load tests
 
 Async load & correctness tests for the facade-service, written with
 `asyncio` + `aiohttp`.
 
-## Setup
+### Setup
 
 ```bash
 uv venv
 uv pip install -r requirements.txt
 ```
 
-## Run
+### Run
 
 Make sure the stack is up first (`docker compose up --build` from the repo
 root), then:
@@ -30,7 +32,7 @@ uv run tests/load_test.py --clients 10 --tx 1000
 uv run tests/load_test.py --url http://localhost:8080
 ```
 
-## What it reports
+### What it reports
 
 - **total requests** and **total time**
 - **throughput** (requests/second = count / time)

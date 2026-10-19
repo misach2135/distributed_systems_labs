@@ -48,5 +48,5 @@ services:
       - counter-service
 
 networks:
-  bank:
+  lab:
     driver: bridge
