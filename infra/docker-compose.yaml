@@ -1,21 +1,6 @@
 name: ds
 
 services:
-  logging-service:
-    build:
-      context: ..
-      dockerfile: services/rust/logger/Dockerfile
-    networks:
-      - lab
-    environment:
-      - BIND_ADDR=0.0.0.0:8000
-      - RUST_LOG=info
-    expose:
-      - "8000"
-    # Exposed on the host for debugging / direct curl access.
-    ports:
-      - "8001:8000"
-
   counter-service:
     build:
       context: ..
@@ -42,13 +27,15 @@ services:
       - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
-      - LOGGING_URL=http://logging-service:8000
+      - LOGGING_URLS=http://logger-1:8000,http://logger-2:8000,http://logger-3:8000
       - COUNTER_URL=http://counter-service:8000
       - RUST_LOG=info
     ports:
       - "8080:8000"
     depends_on:
-      - logging-service
+      - logger-1
+      - logger-2
+      - logger-3
       - counter-service
 
   logger-1: &logger
