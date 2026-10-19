@@ -33,3 +33,18 @@ services:
       - MC_DEFAULT_CLUSTER_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
     ports:
       - "8090:8080"
+
+  lock-counter-1: &lock-counter
+    build: ../services/py/hz_lock_counter
+    image: ds-lock-counter
+    hostname: lock-counter-1
+    networks:
+      - lab
+
+  lock-counter-2:
+    <<: *lock-counter
+    hostname: lock-counter-2
+
+  lock-counter-3:
+    <<: *lock-counter
+    hostname: lock-counter-3
