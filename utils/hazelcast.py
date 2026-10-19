@@ -2,8 +2,8 @@
 
 Start the cluster first (see infra/task2.docker-compose.override.yaml), then:
 
-    uv run tests/hazelcast.py fill    # write keys 0..9_999 into the map
-    uv run tests/hazelcast.py check   # count entries, report missing keys
+    uv run utils/hazelcast.py fill    # write keys 0..9_999 into the map
+    uv run utils/hazelcast.py check   # count entries, report missing keys
 
 Key distribution across members is observed in Management Center
 (http://localhost:8090) -> Storage -> Maps -> distributed-map.
