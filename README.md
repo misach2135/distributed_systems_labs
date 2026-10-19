@@ -1,6 +1,6 @@
-# Task 2 — Hazelcast: Distributed Map & Distributed Lock
+# Task 3 — Microservices with Hazelcast Distributed Map
 
-Report: `report/task2/`.
+Report: `report/`.
 
 ## Setup
 
@@ -8,34 +8,40 @@ Report: `report/task2/`.
 uv venv
 uv pip install -r requirements.txt
 
-C="docker compose -f infra/docker-compose.yaml -f infra/task2.docker-compose.override.yaml"
+C="docker compose -f infra/docker-compose.yaml"
 ```
 
-## Cluster
+## Run
 
-3 members with CP Subsystem + Management Center (http://localhost:8090):
+facade :8080, 3 × logger (Hazelcast Map), counter (PostgreSQL), Hazelcast × 3, Management Center (http://localhost:8090):
 
 ```bash
-$C up -d hazelcast-1 hazelcast-2 hazelcast-3 management-center
-HZ_BACKUP_COUNT=2 $C up -d --force-recreate hazelcast-1 hazelcast-2 hazelcast-3   # change map backup-count (default 1)
+$C up -d --build
 ```
 
-## Part I — Distributed Map
+## Requests
 
 ```bash
-uv run utils/hazelcast.py fill    # write keys 0..9_999
-uv run utils/hazelcast.py check   # map size and missing keys
+for i in $(seq 1 10); do curl -X POST localhost:8080/transaction --data "{user1, +$i}"; echo; done   # 10 transactions
+curl localhost:8080/user/user1                                  # balance + transactions of a user
+curl localhost:8080/accounts                                    # all balances
+$C logs logger-1 logger-2 logger-3 | grep stored                # which logger got which transaction
 ```
 
-## Part II — Distributed Lock
-
-3 counter services, FencedLock + IAtomicLong, count to 100 000:
+## Fault tolerance
 
 ```bash
-$C run --rm lock-counter-1 reset                                        # iteration = 0, counter = 0
-$C up --force-recreate lock-counter-1 lock-counter-2 lock-counter-3      # start the counters
-docker kill -s KILL ds-lock-counter-<N>-1                               # crash the lock owner
-$C run --rm lock-counter-1 status                                       # iteration and counter
+$C stop logger-1 logger-2                   # stop logger instances
+$C start logger-1 logger-2
+docker kill -s KILL ds-hazelcast-1-1        # crash Hazelcast members (backup-count = 2)
+$C up -d hazelcast-1
 ```
 
-Stop everything: `$C down`.
+## Load test
+
+```bash
+$C exec postgres psql -U bank -d bank -c 'truncate accounts;'   # reset balances
+uv run tests/load_test.py                                       # 10 clients × 10 000 tx, both scenarios
+```
+
+Stop: `$C down` (`$C down -v` also wipes the PostgreSQL data).
