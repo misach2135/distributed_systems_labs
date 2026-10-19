@@ -4,7 +4,7 @@
 
 Виконав студент групи ФІ-52мн Ісаченко Н. С.
 
-Код лабораторної роботи розміщений на github у гілці task2/distributed_lock.
+Код лабораторної роботи розміщений на #link("https://github.com/misach2135/distributed_systems_labs/tree/task2/distributed_lock")[github у гілці task2/distributed_lock (цей текст це посилання)].
 
 За основу було взято імплементацію першої лабораторної роботи, дещо реструктуризованої для подальшої роботи: сервіси переміщено в `services/`, rust-крейти в `crates/`, все що повʼязано з інфраструктурою в infrastructure.
 
