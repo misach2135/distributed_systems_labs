@@ -1,44 +1,59 @@
-//! In-memory balances, keyed by `user_id`.
+//! Account balances in PostgreSQL, keyed by `user_id`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use dashmap::DashMap;
+use sqlx::PgPool;
 
-/// Thread-safe store mapping `user_id -> balance`.
-///
-/// Uses [`DashMap`] so that updates to *different* accounts proceed in
-/// parallel, while concurrent updates to the *same* account are serialized
-/// by the per-entry lock held inside [`Self::apply`]. This keeps the
-/// read-modify-write of a single balance atomic, which is what makes the
-/// "10 clients hammering one account" scenario produce a correct total.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct BalanceStore {
-    inner: Arc<DashMap<String, f64>>,
+    pool: PgPool,
 }
 
 impl BalanceStore {
-    pub fn new() -> Self {
-        Self::default()
+    /// Connect to Postgres and create the `accounts` table if it is missing.
+    pub async fn connect(url: &str) -> sqlx::Result<Self> {
+        let pool = PgPool::connect(url).await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS accounts (
+                user_id TEXT PRIMARY KEY,
+                balance DOUBLE PRECISION NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await?;
+        Ok(Self { pool })
     }
 
     /// Apply a credit/debit to `user_id` and return the new balance.
-    pub fn apply(&self, user_id: &str, amount: f64) -> f64 {
-        let mut entry = self.inner.entry(user_id.to_string()).or_insert(0.0);
-        *entry += amount;
-        *entry
+    ///
+    /// A single atomic upsert: Postgres locks the row for the update, so
+    /// concurrent transactions on the same account are never lost.
+    pub async fn apply(&self, user_id: &str, amount: f64) -> sqlx::Result<f64> {
+        sqlx::query_scalar(
+            "INSERT INTO accounts (user_id, balance) VALUES ($1, $2)
+             ON CONFLICT (user_id) DO UPDATE SET balance = accounts.balance + EXCLUDED.balance
+             RETURNING balance",
+        )
+        .bind(user_id)
+        .bind(amount)
+        .fetch_one(&self.pool)
+        .await
     }
 
     /// Current balance for a single user (0.0 if unseen).
-    pub fn get(&self, user_id: &str) -> f64 {
-        self.inner.get(user_id).map(|v| *v).unwrap_or(0.0)
+    pub async fn get(&self, user_id: &str) -> sqlx::Result<f64> {
+        let balance = sqlx::query_scalar("SELECT balance FROM accounts WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(balance.unwrap_or(0.0))
     }
 
-    /// Snapshot of every account balance.
-    pub fn all(&self) -> HashMap<String, f64> {
-        self.inner
-            .iter()
-            .map(|e| (e.key().clone(), *e.value()))
-            .collect()
+    /// Every account balance.
+    pub async fn all(&self) -> sqlx::Result<HashMap<String, f64>> {
+        let rows: Vec<(String, f64)> = sqlx::query_as("SELECT user_id, balance FROM accounts")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().collect())
     }
 }

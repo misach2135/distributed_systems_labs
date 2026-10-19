@@ -12,7 +12,9 @@ use crate::db::BalanceStore;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let store = BalanceStore::new();
+    let database_url = env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://bank:bank@localhost/bank".to_string());
+    let store = BalanceStore::connect(&database_url).await?;
     let app = http::router(store);
 
     let addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8000".to_string());

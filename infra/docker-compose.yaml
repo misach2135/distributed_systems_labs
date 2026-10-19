@@ -24,7 +24,11 @@ services:
       - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
+      - DATABASE_URL=postgres://bank:bank@postgres/bank
       - RUST_LOG=info
+    depends_on:
+      postgres:
+        condition: service_healthy
     expose:
       - "8000"
     ports:
@@ -79,6 +83,9 @@ services:
       - POSTGRES_DB=bank
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bank"]
+      interval: 2s
 
 networks:
   lab:
