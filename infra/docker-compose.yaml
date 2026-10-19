@@ -1,0 +1,52 @@
+name: ds
+
+services:
+  logging-service:
+    build:
+      context: ..
+      dockerfile: services/rust/logger/Dockerfile
+    networks:
+      - lab
+    environment:
+      - BIND_ADDR=0.0.0.0:8000
+      - RUST_LOG=info
+    expose:
+      - "8000"
+    # Exposed on the host for debugging / direct curl access.
+    ports:
+      - "8001:8000"
+
+  counter-service:
+    build:
+      context: ..
+      dockerfile: services/rust/counter/Dockerfile
+    networks:
+      - lab
+    environment:
+      - BIND_ADDR=0.0.0.0:8000
+      - RUST_LOG=info
+    expose:
+      - "8000"
+    ports:
+      - "8002:8000"
+
+  facade-service:
+    build:
+      context: ..
+      dockerfile: services/rust/facade/Dockerfile
+    networks:
+      - lab
+    environment:
+      - BIND_ADDR=0.0.0.0:8000
+      - LOGGING_URL=http://logging-service:8000
+      - COUNTER_URL=http://counter-service:8000
+      - RUST_LOG=info
+    ports:
+      - "8080:8000"
+    depends_on:
+      - logging-service
+      - counter-service
+
+networks:
+  lab:
+    driver: bridge

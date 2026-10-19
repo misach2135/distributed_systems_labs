@@ -1,8 +1,18 @@
 [workspace]
 resolver = "3"
-members = ["counter_service", "facade_service", "logging_service"]
+members = ["crates/common", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
 
 [workspace.dependencies]
+common = { path = "crates/common" }
 axum = { version = "0.8" }
 tracing = { version = "0.1" }
 thiserror = { version = "2.0.18" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing-subscriber = "0.3"
+reqwest = { version = "0.13.5", features = ["json"], default-features = false }
+uuid = { version = "1", features = ["v4", "serde"] }
+dashmap = "6"
+anyhow = "1"
+regex = "1"

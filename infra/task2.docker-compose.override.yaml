@@ -1,0 +1,50 @@
+x-hazelcast: &hazelcast
+  image: hazelcast/hazelcast:5.4.0
+  networks:
+    - lab
+  environment:
+    - HZ_CLUSTERNAME=lab
+    - HZ_CPSUBSYSTEM_CPMEMBERCOUNT=3
+    - HZ_MAP_DEFAULT_BACKUPCOUNT=${HZ_BACKUP_COUNT:-1}
+    - HZ_CPSUBSYSTEM_SESSIONTIMETOLIVESECONDS=15
+
+services:
+  hazelcast-1:
+    <<: *hazelcast
+    ports:
+      - "5701:5701"
+
+  hazelcast-2:
+    <<: *hazelcast
+    ports:
+      - "5702:5701"
+
+  hazelcast-3:
+    <<: *hazelcast
+    ports:
+      - "5703:5701"
+
+  management-center:
+    image: hazelcast/management-center:5.4.1
+    networks:
+      - lab
+    environment:
+      - MC_DEFAULT_CLUSTER=lab
+      - MC_DEFAULT_CLUSTER_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
+    ports:
+      - "8090:8080"
+
+  lock-counter-1: &lock-counter
+    build: ../services/py/hz_lock_counter
+    image: ds-lock-counter
+    hostname: lock-counter-1
+    networks:
+      - lab
+
+  lock-counter-2:
+    <<: *lock-counter
+    hostname: lock-counter-2
+
+  lock-counter-3:
+    <<: *lock-counter
+    hostname: lock-counter-3
