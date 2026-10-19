@@ -1,12 +1,12 @@
-name: ds-task1
+name: ds
 
 services:
   logging-service:
     build:
-      context: .
-      dockerfile: logging_service/Dockerfile
+      context: ..
+      dockerfile: services/rust/logger/Dockerfile
     networks:
-      - bank
+      - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
       - RUST_LOG=info
@@ -18,10 +18,10 @@ services:
 
   counter-service:
     build:
-      context: .
-      dockerfile: counter_service/Dockerfile
+      context: ..
+      dockerfile: services/rust/counter/Dockerfile
     networks:
-      - bank
+      - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
       - RUST_LOG=info
@@ -32,10 +32,10 @@ services:
 
   facade-service:
     build:
-      context: .
-      dockerfile: facade_service/Dockerfile
+      context: ..
+      dockerfile: services/rust/facade/Dockerfile
     networks:
-      - bank
+      - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
       - LOGGING_URL=http://logging-service:8000
