@@ -47,6 +47,42 @@ services:
       - logging-service
       - counter-service
 
+  hazelcast-1: &hazelcast
+    image: hazelcast/hazelcast:5.4.0
+    networks:
+      - lab
+    environment:
+      - HZ_CLUSTERNAME=lab
+      - HZ_MAP_DEFAULT_BACKUPCOUNT=2
+
+  hazelcast-2: *hazelcast
+
+  hazelcast-3: *hazelcast
+
+  management-center:
+    image: hazelcast/management-center:5.4.1
+    networks:
+      - lab
+    environment:
+      - MC_DEFAULT_CLUSTER=lab
+      - MC_DEFAULT_CLUSTER_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
+    ports:
+      - "8090:8080"
+
+  postgres:
+    image: postgres:17-alpine
+    networks:
+      - lab
+    environment:
+      - POSTGRES_USER=bank
+      - POSTGRES_PASSWORD=bank
+      - POSTGRES_DB=bank
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
 networks:
   lab:
     driver: bridge
+
+volumes:
+  pgdata:
