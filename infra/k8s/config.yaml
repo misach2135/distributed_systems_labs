@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hazelcast-config
+  namespace: ds
+data:
+  HZ_CLUSTER_NAME: lab
+  HZ_MEMBERS: hazelcast:5701
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: ds
+data:
+  KAFKA_BOOTSTRAP: kafka:9092
+  KAFKA_TOPIC: transactions
