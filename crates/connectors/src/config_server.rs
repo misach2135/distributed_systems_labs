@@ -1,4 +1,5 @@
-//! Client side of the config-server: self-registration of a service instance.
+//! Client side of the config-server: self-registration of a service instance
+//! and lookup of the addresses of other services.
 
 use std::time::Duration;
 
@@ -34,4 +35,18 @@ pub async fn register(config_server_url: &str, service: &str, address: &str) {
             }
         }
     }
+}
+
+/// Addresses of all registered instances of `service` (empty if none).
+pub async fn addresses(
+    http: &reqwest::Client,
+    config_server_url: &str,
+    service: &str,
+) -> Result<Vec<String>, reqwest::Error> {
+    http.get(format!("{config_server_url}/services/{service}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await
 }

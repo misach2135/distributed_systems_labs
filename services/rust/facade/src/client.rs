@@ -1,21 +1,22 @@
 //! HTTP client used by the facade to talk to the downstream services.
 //!
-//! Every remote call is timed and the elapsed duration is accumulated into
-//! [`Metrics`], split by target service.
-//!
-//! There are several logging-service instances: each call goes to a random
-//! one, and if it fails, to the next one, until one of them answers.
+//! Before every call the facade asks the config-server for the addresses of
+//! the target service, then tries its instances in random order until one
+//! of them answers. Every remote call is timed and the elapsed duration is
+//! accumulated into [`Metrics`], split by target service.
 
 use std::collections::HashMap;
 use std::time::Duration;
 
 use common::{Ack, BalanceResponse, Transaction};
+use connectors::config_server;
 use rand::seq::SliceRandom;
 use reqwest::{Client, RequestBuilder};
 use serde::de::DeserializeOwned;
 use tokio::time::Instant;
 use tracing::warn;
 
+use crate::error::FacadeError;
 use crate::metrics::{Metrics, Target};
 
 /// Upper bound for a single downstream request. Generous on purpose: right
@@ -26,8 +27,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Clone)]
 pub struct Downstream {
     http: Client,
-    logging_urls: Vec<String>,
-    counter_url: String,
+    config_server_url: String,
     metrics: Metrics,
 }
 
@@ -37,14 +37,13 @@ async fn fetch<T: DeserializeOwned>(request: RequestBuilder) -> Result<T, reqwes
 }
 
 impl Downstream {
-    pub fn new(logging_urls: Vec<String>, counter_url: String, metrics: Metrics) -> Self {
+    pub fn new(config_server_url: String, metrics: Metrics) -> Self {
         Self {
             http: Client::builder()
                 .timeout(REQUEST_TIMEOUT)
                 .build()
                 .expect("valid reqwest client config"),
-            logging_urls,
-            counter_url,
+            config_server_url,
             metrics,
         }
     }
@@ -53,72 +52,76 @@ impl Downstream {
         &self.metrics
     }
 
-    /// Await `call` and add its duration to the metrics of `target`.
-    async fn timed<T>(&self, target: Target, call: impl Future<Output = T>) -> T {
+    /// Look up `service` in the config-server and try its instances in random
+    /// order; return the first success (or the last error if all fail).
+    ///
+    /// Only the calls to the service itself are timed, not the lookup.
+    async fn call<T: DeserializeOwned>(
+        &self,
+        service: &str,
+        target: Target,
+        request: impl Fn(&str) -> RequestBuilder,
+    ) -> Result<T, FacadeError> {
+        let mut urls =
+            config_server::addresses(&self.http, &self.config_server_url, service).await?;
+        urls.shuffle(&mut rand::rng());
+
         let start = Instant::now();
-        let result = call.await;
+        let mut result = Err(FacadeError::NoInstances(service.to_string()));
+        for url in &urls {
+            match fetch(request(url)).await {
+                Ok(value) => {
+                    result = Ok(value);
+                    break;
+                }
+                Err(e) => {
+                    warn!(service, %url, error = %e, "instance failed, trying the next one");
+                    result = Err(e.into());
+                }
+            }
+        }
         self.metrics
             .record(target, start.elapsed().as_nanos() as u64);
         result
     }
 
-    /// Try the logging instances in random order; return the first success
-    /// (or the last error if all of them fail).
-    async fn logging<T: DeserializeOwned>(
-        &self,
-        request: impl Fn(&str) -> RequestBuilder,
-    ) -> Result<T, reqwest::Error> {
-        let mut urls = self.logging_urls.clone();
-        urls.shuffle(&mut rand::rng());
-
-        self.timed(Target::Logging, async {
-            let mut last_error = None;
-            for url in &urls {
-                match fetch(request(url)).await {
-                    Ok(value) => return Ok(value),
-                    Err(e) => {
-                        warn!(%url, error = %e, "logging-service instance failed, trying the next one");
-                        last_error = Some(e);
-                    }
-                }
-            }
-            Err(last_error.expect("at least one logging-service url"))
+    /// `POST {logger}/log`
+    pub async fn log(&self, tx: &Transaction) -> Result<Ack, FacadeError> {
+        self.call("logger", Target::Logging, |base| {
+            self.http.post(format!("{base}/log")).json(tx)
         })
         .await
     }
 
-    /// `POST {logging}/log`
-    pub async fn log(&self, tx: &Transaction) -> Result<Ack, reqwest::Error> {
-        self.logging(|base| self.http.post(format!("{base}/log")).json(tx))
-            .await
-    }
-
-    /// `GET {logging}/transactions/{user_id}`
-    pub async fn transactions(&self, user_id: &str) -> Result<Vec<Transaction>, reqwest::Error> {
-        self.logging(|base| self.http.get(format!("{base}/transactions/{user_id}")))
-            .await
+    /// `GET {logger}/transactions/{user_id}`
+    pub async fn transactions(&self, user_id: &str) -> Result<Vec<Transaction>, FacadeError> {
+        self.call("logger", Target::Logging, |base| {
+            self.http.get(format!("{base}/transactions/{user_id}"))
+        })
+        .await
     }
 
     /// `POST {counter}/process` -> updated balance
-    pub async fn process(&self, tx: &Transaction) -> Result<BalanceResponse, reqwest::Error> {
-        let request = self
-            .http
-            .post(format!("{}/process", self.counter_url))
-            .json(tx);
-        self.timed(Target::Counter, fetch(request)).await
+    pub async fn process(&self, tx: &Transaction) -> Result<BalanceResponse, FacadeError> {
+        self.call("counter", Target::Counter, |base| {
+            self.http.post(format!("{base}/process")).json(tx)
+        })
+        .await
     }
 
     /// `GET {counter}/balance/{user_id}`
-    pub async fn balance(&self, user_id: &str) -> Result<BalanceResponse, reqwest::Error> {
-        let request = self
-            .http
-            .get(format!("{}/balance/{user_id}", self.counter_url));
-        self.timed(Target::Counter, fetch(request)).await
+    pub async fn balance(&self, user_id: &str) -> Result<BalanceResponse, FacadeError> {
+        self.call("counter", Target::Counter, |base| {
+            self.http.get(format!("{base}/balance/{user_id}"))
+        })
+        .await
     }
 
     /// `GET {counter}/balances`
-    pub async fn balances(&self) -> Result<HashMap<String, f64>, reqwest::Error> {
-        let request = self.http.get(format!("{}/balances", self.counter_url));
-        self.timed(Target::Counter, fetch(request)).await
+    pub async fn balances(&self) -> Result<HashMap<String, f64>, FacadeError> {
+        self.call("counter", Target::Counter, |base| {
+            self.http.get(format!("{base}/balances"))
+        })
+        .await
     }
 }

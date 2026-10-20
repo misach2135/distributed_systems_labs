@@ -42,8 +42,6 @@ services:
       - lab
     environment:
       - BIND_ADDR=0.0.0.0:8000
-      - LOGGING_URLS=http://logger-1:8000,http://logger-2:8000,http://logger-3:8000
-      - COUNTER_URL=http://counter-service:8000
       - CONFIG_SERVER_URL=http://config-server:8000
       - SERVICE_URL=http://facade-service:8000
       - RUST_LOG=info

@@ -14,6 +14,9 @@ pub enum FacadeError {
 
     #[error("downstream service error: {0}")]
     Downstream(#[from] reqwest::Error),
+
+    #[error("no registered instances of {0}")]
+    NoInstances(String),
 }
 
 impl IntoResponse for FacadeError {
@@ -21,6 +24,7 @@ impl IntoResponse for FacadeError {
         let status = match &self {
             FacadeError::BadRequest(_) => StatusCode::BAD_REQUEST,
             FacadeError::Downstream(_) => StatusCode::BAD_GATEWAY,
+            FacadeError::NoInstances(_) => StatusCode::SERVICE_UNAVAILABLE,
         };
         let body = Json(json!({ "error": self.to_string() }));
         (status, body).into_response()
