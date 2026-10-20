@@ -184,6 +184,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "config_server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "common",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "counter_service"
 version = "0.1.0"
 dependencies = [

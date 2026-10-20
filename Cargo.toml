@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/common", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
+members = ["crates/common", "services/rust/config-server", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
 
 [workspace.dependencies]
 common = { path = "crates/common" }

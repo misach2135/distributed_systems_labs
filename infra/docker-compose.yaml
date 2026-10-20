@@ -1,6 +1,17 @@
 name: ds
 
 services:
+  config-server:
+    build:
+      context: ..
+      dockerfile: services/rust/config-server/Dockerfile
+    networks:
+      - lab
+    environment:
+      - RUST_LOG=info
+    ports:
+      - "8003:8000"
+
   counter-service:
     build:
       context: ..

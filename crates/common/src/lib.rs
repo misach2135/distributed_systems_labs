@@ -62,6 +62,14 @@ pub struct MetricsResponse {
     pub counter_avg_ms: f64,
 }
 
+/// Body of `POST /register` on the config-server: an instance of `service`
+/// is reachable at `address` (e.g. `http://logger-1:8000`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Registration {
+    pub service: String,
+    pub address: String,
+}
+
 /// Generic acknowledgement returned by `logging-service`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ack {
