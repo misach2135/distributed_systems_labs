@@ -2,14 +2,18 @@
 //!
 //! Before every call the facade asks the config-server for the addresses of
 //! the target service, then tries its instances in random order until one
-//! of them answers. Every remote call is timed and the elapsed duration is
-//! accumulated into [`Metrics`], split by target service.
+//! of them answers. New transactions go to counter-service through Kafka.
+//! Every remote call is timed and the elapsed duration is accumulated into
+//! [`Metrics`], split by target service.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use common::{Ack, BalanceResponse, Transaction};
 use connectors::config_server;
+use krafka::Record;
+use krafka::producer::Producer;
 use rand::seq::SliceRandom;
 use reqwest::{Client, RequestBuilder};
 use serde::de::DeserializeOwned;
@@ -28,6 +32,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Downstream {
     http: Client,
     config_server_url: String,
+    producer: Arc<Producer>,
+    topic: String,
     metrics: Metrics,
 }
 
@@ -37,13 +43,20 @@ async fn fetch<T: DeserializeOwned>(request: RequestBuilder) -> Result<T, reqwes
 }
 
 impl Downstream {
-    pub fn new(config_server_url: String, metrics: Metrics) -> Self {
+    pub fn new(
+        config_server_url: String,
+        producer: Producer,
+        topic: String,
+        metrics: Metrics,
+    ) -> Self {
         Self {
             http: Client::builder()
                 .timeout(REQUEST_TIMEOUT)
                 .build()
                 .expect("valid reqwest client config"),
             config_server_url,
+            producer: Arc::new(producer),
+            topic,
             metrics,
         }
     }
@@ -101,12 +114,18 @@ impl Downstream {
         .await
     }
 
-    /// `POST {counter}/process` -> updated balance
-    pub async fn process(&self, tx: &Transaction) -> Result<BalanceResponse, FacadeError> {
-        self.call("counter", Target::Counter, |base| {
-            self.http.post(format!("{base}/process")).json(tx)
-        })
-        .await
+    /// Queue a transaction for counter-service: returns once Kafka has
+    /// stored it (acks=all), without waiting for the counter to apply it.
+    /// Keyed by `user_id`, so one account's transactions stay in order.
+    pub async fn publish(&self, tx: &Transaction) -> Result<(), FacadeError> {
+        let value = serde_json::to_vec(tx).expect("transaction serializes to JSON");
+        let record = Record::new(self.topic.as_str(), value).key(tx.user_id.clone());
+
+        let start = Instant::now();
+        let result = self.producer.send(record).await;
+        self.metrics
+            .record(Target::Counter, start.elapsed().as_nanos() as u64);
+        result.map(|_metadata| ()).map_err(FacadeError::from)
     }
 
     /// `GET {counter}/balance/{user_id}`

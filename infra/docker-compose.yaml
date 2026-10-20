@@ -48,6 +48,8 @@ services:
       - BIND_ADDR=0.0.0.0:8000
       - CONFIG_SERVER_URL=http://config-server:8000
       - SERVICE_URL=http://facade-service:8000
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=transactions
       - RUST_LOG=info
     ports:
       - "8080:8000"
@@ -57,6 +59,7 @@ services:
       - logger-3
       - counter-service
       - config-server
+      - kafka
 
   logger-1: &logger
     build: ../services/py/logger

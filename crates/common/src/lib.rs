@@ -40,7 +40,6 @@ pub struct BalanceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionResponse {
     pub transaction_id: Uuid,
-    pub balance: f64,
 }
 
 /// Response returned by the facade for `GET /user/{user_id}`.

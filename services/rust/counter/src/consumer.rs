@@ -24,8 +24,14 @@ pub async fn run(store: BalanceStore, bootstrap: &str, topic: &str) -> anyhow::R
     consumer.subscribe([topic]).await?;
     info!(%bootstrap, %topic, "consuming transactions");
 
+    let shutdown = crate::shutdown_signal();
+    tokio::pin!(shutdown);
     loop {
-        let records = match consumer.poll(Duration::from_secs(1)).await {
+        let polled = tokio::select! {
+            _ = &mut shutdown => break,
+            polled = consumer.poll(Duration::from_secs(1)) => polled,
+        };
+        let records = match polled {
             Ok(records) => records,
             Err(e) => {
                 warn!(error = %e, "kafka poll failed, retrying");
@@ -53,6 +59,10 @@ pub async fn run(store: BalanceStore, bootstrap: &str, topic: &str) -> anyhow::R
             warn!(error = %e, "offset commit failed");
         }
     }
+
+    consumer.close().await?;
+    info!("left the consumer group");
+    Ok(())
 }
 
 async fn apply(store: &BalanceStore, tx: &Transaction, offset: i64) {

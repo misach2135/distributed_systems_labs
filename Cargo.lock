@@ -464,6 +464,7 @@ dependencies = [
  "axum",
  "common",
  "connectors",
+ "krafka",
  "rand 0.10.3",
  "reqwest",
  "serde",

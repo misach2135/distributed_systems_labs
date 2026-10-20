@@ -39,9 +39,10 @@ fn now_millis() -> i64 {
 
 /// `POST /transaction` — client sends a `{user_Id, +/- amount}` message.
 ///
-/// The facade assigns a `transaction_id` + timestamp, then fans out
-/// concurrently to logging-service (`/log`) and counter-service
-/// (`/process`), and returns `{transaction_id, balance}`.
+/// The facade assigns a `transaction_id` + timestamp, then concurrently
+/// stores it in logging-service (`/log`) and queues it for counter-service
+/// (Kafka), and returns `{transaction_id}`. The balance is updated
+/// asynchronously, so it is not part of the response.
 async fn transaction(
     State(downstream): State<Downstream>,
     body: String,
@@ -54,16 +55,13 @@ async fn transaction(
     let tx = client_tx.into_transaction(transaction_id, now_millis());
 
     // Fire both downstream calls concurrently and wait for both.
-    let (log_res, process_res) = tokio::join!(downstream.log(&tx), downstream.process(&tx));
+    let (log_res, publish_res) = tokio::join!(downstream.log(&tx), downstream.publish(&tx));
     log_res?;
-    let balance = process_res?.balance;
+    publish_res?;
 
-    info!(%transaction_id, user_id = %tx.user_id, amount = tx.amount, balance, "transaction completed");
+    info!(%transaction_id, user_id = %tx.user_id, amount = tx.amount, "transaction accepted");
 
-    Ok(Json(TransactionResponse {
-        transaction_id,
-        balance,
-    }))
+    Ok(Json(TransactionResponse { transaction_id }))
 }
 
 /// `GET /user/{user_id}` — balance (counter) + transactions (logging).

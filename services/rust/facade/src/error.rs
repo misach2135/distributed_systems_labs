@@ -17,6 +17,9 @@ pub enum FacadeError {
 
     #[error("no registered instances of {0}")]
     NoInstances(String),
+
+    #[error("message queue error: {0}")]
+    Queue(#[from] krafka::KrafkaError),
 }
 
 impl IntoResponse for FacadeError {
@@ -24,7 +27,7 @@ impl IntoResponse for FacadeError {
         let status = match &self {
             FacadeError::BadRequest(_) => StatusCode::BAD_REQUEST,
             FacadeError::Downstream(_) => StatusCode::BAD_GATEWAY,
-            FacadeError::NoInstances(_) => StatusCode::SERVICE_UNAVAILABLE,
+            FacadeError::NoInstances(_) | FacadeError::Queue(_) => StatusCode::SERVICE_UNAVAILABLE,
         };
         let body = Json(json!({ "error": self.to_string() }));
         (status, body).into_response()
