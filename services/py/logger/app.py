@@ -9,8 +9,6 @@ import json
 import logging
 import os
 import socket
-import time
-import urllib.request
 
 import hazelcast
 from flask import Flask, jsonify, request
@@ -23,30 +21,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logging.getLogger("hazelcast").setLevel(logging.WARNING)
 log = logging.getLogger("logging-service")
 
-# HZ_MEMBERS lists this instance's own member first: the client starts there
-# and then works with the whole cluster, so losing that member is not fatal.
+# Client settings come from the `hazelcast-config` ConfigMap. The client
+# connects to any of the members and then discovers the whole cluster.
 client = hazelcast.HazelcastClient(
-    cluster_name="lab",
+    cluster_name=os.environ["HZ_CLUSTER_NAME"],
     cluster_members=os.environ["HZ_MEMBERS"].split(","),
 )
 transactions = client.get_map("transactions").blocking()
-
-
-def register() -> None:
-    """Register this instance in the config-server, retrying until it answers."""
-    url = f"{os.environ['CONFIG_SERVER_URL']}/register"
-    body = json.dumps({"service": "logger", "address": os.environ["SERVICE_URL"]}).encode()
-    while True:
-        try:
-            urllib.request.urlopen(urllib.request.Request(url, body, {"Content-Type": "application/json"}), timeout=5)
-            log.info("%s registered in config-server as %s", NAME, os.environ["SERVICE_URL"])
-            return
-        except OSError as e:
-            log.warning("config-server unavailable (%s), retrying", e)
-            time.sleep(1)
-
-
-register()
+log.info("%s connected to Hazelcast cluster %s via %s", NAME, os.environ["HZ_CLUSTER_NAME"], os.environ["HZ_MEMBERS"])
 
 app = Flask(__name__)
 
