@@ -23,11 +23,15 @@ services:
       - DATABASE_URL=postgres://bank:bank@postgres/bank
       - CONFIG_SERVER_URL=http://config-server:8000
       - SERVICE_URL=http://counter-service:8000
+      - KAFKA_BOOTSTRAP=kafka:9092
+      - KAFKA_TOPIC=transactions
       - RUST_LOG=info
     depends_on:
       config-server:
         condition: service_started
       postgres:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     expose:
       - "8000"

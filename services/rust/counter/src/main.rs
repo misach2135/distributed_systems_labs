@@ -1,3 +1,4 @@
+mod consumer;
 mod db;
 mod http;
 
@@ -15,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://bank:bank@localhost/bank".to_string());
     let store = BalanceStore::connect(&database_url).await?;
-    let app = http::router(store);
+    let app = http::router(store.clone());
 
     let addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8000".to_string());
     let listener = TcpListener::bind(&addr).await?;
@@ -27,10 +28,17 @@ async fn main() -> anyhow::Result<()> {
 
     info!(%addr, "counter-service listening");
 
+    let kafka_bootstrap =
+        env::var("KAFKA_BOOTSTRAP").unwrap_or_else(|_| "localhost:9092".to_string());
+    let kafka_topic = env::var("KAFKA_TOPIC").unwrap_or_else(|_| "transactions".to_string());
+
     select! {
         res = axum::serve(listener, app) => {
             res?;
             info!("service stopped");
+        }
+        res = consumer::run(store, &kafka_bootstrap, &kafka_topic) => {
+            res?;
         }
         _ = ctrl_c() => {
             info!("shutdown signal received");
