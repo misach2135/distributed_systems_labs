@@ -13,6 +13,10 @@ Two scenarios (from the assignment):
   B. 10 clients, 10k tx of +1 each to *one shared* account
      -> that single account must end at 100_000.
 
+The counter-service applies transactions asynchronously (Kafka), so after
+sending, the test waits until the balances reach the expected values and
+also reports how long that took.
+
 Usage:
     uv venv && uv pip install aiohttp
     uv run tests/load_test.py                 # run both scenarios
@@ -52,18 +56,25 @@ async def get_metrics(session, url):
         return await resp.json()
 
 
-async def get_balance(session, url, user_id):
-    async with session.get(f"{url}/user/{user_id}") as resp:
-        data = await resp.json()
-        return data["balance"]
+async def wait_for_balances(session, url, expected, timeout=300):
+    """Poll /accounts until every balance in `expected` is reached (or timeout)."""
+    deadline = time.perf_counter() + timeout
+    while True:
+        async with session.get(f"{url}/accounts") as resp:
+            accounts = await resp.json()
+        done = all(accounts.get(uid, 0) == value for uid, value in expected.items())
+        if done or time.perf_counter() > deadline:
+            return accounts
+        await asyncio.sleep(0.5)
 
 
-def print_report(name, total_requests, elapsed, metrics, checks):
+def print_report(name, total_requests, elapsed, consistent_after, metrics, checks):
     rps = total_requests / elapsed if elapsed > 0 else float("inf")
     print(f"\n=== Scenario {name} ===")
     print(f"  total requests : {total_requests}")
     print(f"  total time     : {elapsed:.3f} s")
     print(f"  throughput     : {rps:,.1f} req/s")
+    print(f"  balances consistent after: {consistent_after:.3f} s (from the first request)")
     print("  --- facade latency breakdown (accumulated) ---")
     print(
         f"  logging-service: {metrics['logging_total_ms']:.1f} ms total "
@@ -105,17 +116,16 @@ async def run_scenario(name, url, clients, n_tx, shared):
         metrics = await get_metrics(session, url)
 
         # Build correctness checks.
-        checks = []
         if shared:
-            actual = await get_balance(session, url, "shared")
-            checks.append(("shared", actual, clients * n_tx))
+            expected = {"shared": clients * n_tx}
         else:
-            for uid in user_ids:
-                actual = await get_balance(session, url, uid)
-                checks.append((uid, actual, n_tx))
+            expected = {uid: n_tx for uid in user_ids}
+        accounts = await wait_for_balances(session, url, expected)
+        consistent_after = time.perf_counter() - start
+        checks = [(uid, accounts.get(uid, 0), value) for uid, value in expected.items()]
 
         total_requests = clients * n_tx
-        return print_report(name, total_requests, elapsed, metrics, checks)
+        return print_report(name, total_requests, elapsed, consistent_after, metrics, checks)
 
 
 async def main():
