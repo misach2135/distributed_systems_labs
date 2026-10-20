@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-center
+  namespace: ds
+spec:
+  selector:
+    app: management-center
+  ports:
+    - port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-center
+  namespace: ds
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: management-center
+  template:
+    metadata:
+      labels:
+        app: management-center
+    spec:
+      containers:
+        - name: management-center
+          image: hazelcast/management-center:5.4.1
+          env:
+            - { name: MC_DEFAULT_CLUSTER, value: "lab" }
+            - { name: MC_DEFAULT_CLUSTER_MEMBERS, value: "hazelcast" }
+            - { name: JAVA_OPTS, value: "-Xmx512m" }
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              memory: 1Gi
