@@ -1,0 +1,129 @@
+name: ds
+
+services:
+  config-server:
+    build:
+      context: ..
+      dockerfile: services/rust/config-server/Dockerfile
+    networks:
+      - lab
+    environment:
+      - RUST_LOG=info
+    ports:
+      - "8003:8000"
+
+  counter-service:
+    build:
+      context: ..
+      dockerfile: services/rust/counter/Dockerfile
+    networks:
+      - lab
+    environment:
+      - BIND_ADDR=0.0.0.0:8000
+      - DATABASE_URL=postgres://bank:bank@postgres/bank
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://counter-service:8000
+      - RUST_LOG=info
+    depends_on:
+      config-server:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+    ports:
+      - "8002:8000"
+
+  facade-service:
+    build:
+      context: ..
+      dockerfile: services/rust/facade/Dockerfile
+    networks:
+      - lab
+    environment:
+      - BIND_ADDR=0.0.0.0:8000
+      - LOGGING_URLS=http://logger-1:8000,http://logger-2:8000,http://logger-3:8000
+      - COUNTER_URL=http://counter-service:8000
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://facade-service:8000
+      - RUST_LOG=info
+    ports:
+      - "8080:8000"
+    depends_on:
+      - logger-1
+      - logger-2
+      - logger-3
+      - counter-service
+      - config-server
+
+  logger-1: &logger
+    build: ../services/py/logger
+    image: ds-logging
+    hostname: logger-1
+    networks:
+      - lab
+    depends_on:
+      - config-server
+    environment:
+      - HZ_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-1:8000
+
+  logger-2:
+    <<: *logger
+    hostname: logger-2
+    environment:
+      - HZ_MEMBERS=hazelcast-2,hazelcast-3,hazelcast-1
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-2:8000
+
+  logger-3:
+    <<: *logger
+    hostname: logger-3
+    environment:
+      - HZ_MEMBERS=hazelcast-3,hazelcast-1,hazelcast-2
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-3:8000
+
+  hazelcast-1: &hazelcast
+    image: hazelcast/hazelcast:5.4.0
+    networks:
+      - lab
+    environment:
+      - HZ_CLUSTERNAME=lab
+      - HZ_MAP_DEFAULT_BACKUPCOUNT=2
+
+  hazelcast-2: *hazelcast
+
+  hazelcast-3: *hazelcast
+
+  management-center:
+    image: hazelcast/management-center:5.4.1
+    networks:
+      - lab
+    environment:
+      - MC_DEFAULT_CLUSTER=lab
+      - MC_DEFAULT_CLUSTER_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
+    ports:
+      - "8090:8080"
+
+  postgres:
+    image: postgres:17-alpine
+    networks:
+      - lab
+    environment:
+      - POSTGRES_USER=bank
+      - POSTGRES_PASSWORD=bank
+      - POSTGRES_DB=bank
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bank"]
+      interval: 2s
+
+networks:
+  lab:
+    driver: bridge
+
+volumes:
+  pgdata:
