@@ -196,12 +196,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "connectors"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "reqwest",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "counter_service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
  "common",
+ "connectors",
  "serde",
  "sqlx",
  "tokio",
@@ -389,6 +400,7 @@ dependencies = [
  "anyhow",
  "axum",
  "common",
+ "connectors",
  "rand",
  "reqwest",
  "serde",

@@ -1,9 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/common", "services/rust/config-server", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
+members = ["crates/common", "crates/connectors", "services/rust/config-server", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
 
 [workspace.dependencies]
 common = { path = "crates/common" }
+connectors = { path = "crates/connectors" }
 axum = { version = "0.8" }
 tracing = { version = "0.1" }
 thiserror = { version = "2.0.18" }

@@ -9,6 +9,8 @@ import json
 import logging
 import os
 import socket
+import time
+import urllib.request
 
 import hazelcast
 from flask import Flask, jsonify, request
@@ -28,6 +30,23 @@ client = hazelcast.HazelcastClient(
     cluster_members=os.environ["HZ_MEMBERS"].split(","),
 )
 transactions = client.get_map("transactions").blocking()
+
+
+def register() -> None:
+    """Register this instance in the config-server, retrying until it answers."""
+    url = f"{os.environ['CONFIG_SERVER_URL']}/register"
+    body = json.dumps({"service": "logger", "address": os.environ["SERVICE_URL"]}).encode()
+    while True:
+        try:
+            urllib.request.urlopen(urllib.request.Request(url, body, {"Content-Type": "application/json"}), timeout=5)
+            log.info("%s registered in config-server as %s", NAME, os.environ["SERVICE_URL"])
+            return
+        except OSError as e:
+            log.warning("config-server unavailable (%s), retrying", e)
+            time.sleep(1)
+
+
+register()
 
 app = Flask(__name__)
 

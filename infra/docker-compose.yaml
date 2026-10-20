@@ -21,8 +21,12 @@ services:
     environment:
       - BIND_ADDR=0.0.0.0:8000
       - DATABASE_URL=postgres://bank:bank@postgres/bank
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://counter-service:8000
       - RUST_LOG=info
     depends_on:
+      config-server:
+        condition: service_started
       postgres:
         condition: service_healthy
     expose:
@@ -40,6 +44,8 @@ services:
       - BIND_ADDR=0.0.0.0:8000
       - LOGGING_URLS=http://logger-1:8000,http://logger-2:8000,http://logger-3:8000
       - COUNTER_URL=http://counter-service:8000
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://facade-service:8000
       - RUST_LOG=info
     ports:
       - "8080:8000"
@@ -48,6 +54,7 @@ services:
       - logger-2
       - logger-3
       - counter-service
+      - config-server
 
   logger-1: &logger
     build: ../services/py/logger
@@ -55,20 +62,28 @@ services:
     hostname: logger-1
     networks:
       - lab
+    depends_on:
+      - config-server
     environment:
       - HZ_MEMBERS=hazelcast-1,hazelcast-2,hazelcast-3
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-1:8000
 
   logger-2:
     <<: *logger
     hostname: logger-2
     environment:
       - HZ_MEMBERS=hazelcast-2,hazelcast-3,hazelcast-1
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-2:8000
 
   logger-3:
     <<: *logger
     hostname: logger-3
     environment:
       - HZ_MEMBERS=hazelcast-3,hazelcast-1,hazelcast-2
+      - CONFIG_SERVER_URL=http://config-server:8000
+      - SERVICE_URL=http://logger-3:8000
 
   hazelcast-1: &hazelcast
     image: hazelcast/hazelcast:5.4.0
