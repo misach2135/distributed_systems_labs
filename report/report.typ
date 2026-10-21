@@ -1,88 +1,38 @@
 #import "template.typ": *
-#show: report.with(title: "Звіт з виконання лабораторної роботи №5", author: "Ісаченко Н. С", group: "ФІ-52мн")
+#show: report.with(title: "Звіт з виконання лабораторної роботи №4", author: "Ісаченко Н. С", group: "ФІ-52мн")
 
-Гітхаб репозиторій з проектом: https://github.com/misach2135/distributed_systems_labs/tree/micro_consul
+Гітхаб репозиторій з проектом: https://github.com/misach2135/distributed_systems_labs/tree/micro_mq
 
-Завданням лабораторної роботи було використати Consul або Kubernetes в якості
-Config Server, Service Registry та Service Discovery.
+В якості messaging queue було обрано Apache Kafka. Як і інші сервіси, Kafka піднімається через docker-compose.
 
-У цій лабораторній роботі для розгортання мікросервісів використовувався Kubernetes.
-Ще з попередніх лабораторних робіт, кожен сервіс запускався у своєму контейнері. Тепер
-контейнери запускаються у Pod-ах, а замість реалізованого у 4 лабораторній роботі
-config-server-а(який насправді виконував роль service register) використовується EndpointSlices API з Kubernetes.
+Реалізований сервіс `config-server`, який зберігає у внутрішній памʼяті назви сервісів та їх адреси. Facade, Logger та Counter реєструються у `config-server`, використовуючи `/register` ендпоїнт, і через `/services/{service}` отримуються адреси інстансів сервісів. Перед кожним викликом сервіса, facade бере список адрес через `/services/{service}`, перемішує їх, та намагається викликати, якщо не виходить бере наступну адресу.
 
-Усі конфігураційні файли обʼєктів Kubernetes лежать у репозиторії, у гілці `micro_consul`, у папці `infra/k8s`.
+Логи `config-server`-а:
 
-#image("assets/image.png")
+#image("assets/image-4.png")
 
-#image("assets/image_1.png")
+Отримання адрес сервісів через `GET /services{service}`.
 
-#image("assets/image_2.png")
+#image("assets/image-3.png")
 
-#pagebreak()
+Повідомлення з кафки, які приходять після поповнення акаунту користувача:
 
-POST та GET запити:
+#image("assets/image-5.png")
 
-#image("assets/image-2.png")
+Причому `facade` тепер не повертає баланс одразу, він повертає `txid`. 
 
-Kafka та Hazelcast конфігуруються через ConfigMap:
+Якщо відключити `counter`, то транзакції не загубляться, а будуть висіти в черзі, коли `counter` включиться, то транзакції обробляться. В `counter` за це відповідає таска `consumer::run()`, яка читає записи з `Kafka`, та додає їх у таблицю.
 
-```yml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hazelcast-config
-  namespace: ds
-data:
-  HZ_CLUSTER_NAME: lab
-  HZ_MEMBERS: hazelcast:5701
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kafka-config
-  namespace: ds
-data:
-  KAFKA_BOOTSTRAP: kafka:9092
-  KAFKA_TOPIC: transactions
-```
+#image("assets/image-6.png")
 
-Тести запускались лише з одни сервісом facade. 
+Логи `counter-service`:
 
-#figure(
-  table(
-  columns: (auto, auto, auto, auto),
-  align: left + horizon,
-  table.header(
-    [*Test scenarios*], [*Task 1 (in-mem)*], [*Task 3 (DB)*], [*Task 5 (final)*]
-  ),
-  [*10 accounts*],
-  [Total time: *36.327 s*],
-  [Total time:],
-  [Total time: *111.986 s*],
+#image("assets/image-7.png")
 
-  [],
-  [logging-service\ contribution: *224643.4 ms*],
-  [logging-service\ contribution:],
-  [logging-service\ contribution: *755938.6 ms*],
+Логи `facade`:
 
-  [],
-  [counter-service\ contribution: *37546.5 ms*],
-  [counter-service\ contribution:],
-  [counter-service\ contribution: *488016.4 ms*],
-  [*1 account*],
-  [Total time: *47.917 s*],
-  [Total time:],
-  [Total time: *109.316 s*],
+#image("assets/image-9.png")
 
-  [],
-  [logging-service\ contribution: *148583.7 ms*],
-  [logging-service\ contribution:],
-  [logging-service\ contribution: *770365.7 ms*],
+Логи з logger через hazelcast:
 
-  [],
-  [counter-service\ contribution: *72849.0 ms*],
-  [counter-service\ contribution:],
-  [counter-service\ contribution: *423765.3 ms*]
-), caption: [Таблиця порівняння результатів]
-) <results_table>
+#image("assets/image-8.png")
