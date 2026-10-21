@@ -1,0 +1,51 @@
+# Entry point for clients: reachable from the host at localhost:8080 while
+# `minikube tunnel` is running.
+apiVersion: v1
+kind: Service
+metadata:
+  name: facade
+  namespace: ds
+spec:
+  type: LoadBalancer
+  selector:
+    app: facade
+  ports:
+    - port: 8080
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facade
+  namespace: ds
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: facade
+  template:
+    metadata:
+      labels:
+        app: facade
+    spec:
+      # Allowed to read EndpointSlices (see facade-rbac.yaml).
+      serviceAccountName: facade
+      containers:
+        - name: facade
+          image: ds-facade:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: kafka-config
+          env:
+            - name: RUST_LOG
+              value: info
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 3

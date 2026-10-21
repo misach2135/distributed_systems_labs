@@ -1,0 +1,52 @@
+# Headless Service: its DNS name resolves to the IPs of all members. Used by
+# the members to find each other and by clients to reach the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hazelcast
+  namespace: ds
+spec:
+  clusterIP: None
+  # Members must see each other before they are ready.
+  publishNotReadyAddresses: true
+  selector:
+    app: hazelcast
+  ports:
+    - port: 5701
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hazelcast
+  namespace: ds
+spec:
+  serviceName: hazelcast
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hazelcast
+  template:
+    metadata:
+      labels:
+        app: hazelcast
+    spec:
+      containers:
+        - name: hazelcast
+          image: hazelcast/hazelcast:5.4.0
+          env:
+            - { name: HZ_CLUSTERNAME, value: "lab" }
+            - { name: HZ_MAP_DEFAULT_BACKUPCOUNT, value: "2" }
+            # Kubernetes discovery in DNS mode (no API access needed).
+            - { name: HZ_NETWORK_JOIN_MULTICAST_ENABLED, value: "false" }
+            - { name: HZ_NETWORK_JOIN_KUBERNETES_ENABLED, value: "true" }
+            - { name: HZ_NETWORK_JOIN_KUBERNETES_SERVICEDNS, value: "hazelcast.ds.svc.cluster.local" }
+            - { name: JAVA_OPTS, value: "-Xmx384m" }
+          ports:
+            - containerPort: 5701
+          readinessProbe:
+            tcpSocket:
+              port: 5701
+            periodSeconds: 5
+          resources:
+            limits:
+              memory: 640Mi

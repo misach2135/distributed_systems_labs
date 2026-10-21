@@ -1,8 +1,25 @@
 [workspace]
 resolver = "3"
-members = ["counter_service", "facade_service", "logging_service"]
+members = ["crates/common", "crates/connectors", "services/rust/config-server", "services/rust/counter", "services/rust/facade", "services/rust/logger"]
 
 [workspace.dependencies]
+common = { path = "crates/common" }
+connectors = { path = "crates/connectors" }
 axum = { version = "0.8" }
 tracing = { version = "0.1" }
 thiserror = { version = "2.0.18" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing-subscriber = "0.3"
+reqwest = { version = "0.13.5", features = ["json"], default-features = false }
+uuid = { version = "1", features = ["v4", "serde"] }
+dashmap = "6"
+anyhow = "1"
+regex = "1"
+rand = "0.10"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
+krafka = "0.27"
+kube = { version = "4.2", features = ["runtime"] }
+k8s-openapi = { version = "0.28", features = ["latest"] }
+futures = "0.3"
