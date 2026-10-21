@@ -8,3 +8,7 @@ common.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+anyhow.workspace = true
+kube.workspace = true
+k8s-openapi.workspace = true
+futures.workspace = true

@@ -1,4 +1,4 @@
-# Task 4 — Microservices with Message Queue (Kafka) and Config Server
+# Task 5 — Microservices with Message Queue (Kafka) and Config Server
 
 Report: `report/`.
 
@@ -54,3 +54,7 @@ uv run tests/load_test.py                                                      #
 ```
 
 Stop: `$C down` (`$C down -v` also wipes PostgreSQL and Kafka data).
+
+```bash
+minikube start --driver=docker --container-runtime=docker --cpus=6 --memory=8g
+```

@@ -1,17 +1,11 @@
 //! HTTP client used by the facade to talk to the downstream services.
-//!
-//! Before every call the facade asks the config-server for the addresses of
-//! the target service, then tries its instances in random order until one
-//! of them answers. New transactions go to counter-service through Kafka.
-//! Every remote call is timed and the elapsed duration is accumulated into
-//! [`Metrics`], split by target service.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use common::{Ack, BalanceResponse, Transaction};
-use connectors::config_server;
+use connectors::k8s::Discovery;
 use krafka::Record;
 use krafka::producer::Producer;
 use rand::seq::SliceRandom;
@@ -31,7 +25,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Clone)]
 pub struct Downstream {
     http: Client,
-    config_server_url: String,
+    discovery: Discovery,
     producer: Arc<Producer>,
     topic: String,
     metrics: Metrics,
@@ -43,18 +37,13 @@ async fn fetch<T: DeserializeOwned>(request: RequestBuilder) -> Result<T, reqwes
 }
 
 impl Downstream {
-    pub fn new(
-        config_server_url: String,
-        producer: Producer,
-        topic: String,
-        metrics: Metrics,
-    ) -> Self {
+    pub fn new(discovery: Discovery, producer: Producer, topic: String, metrics: Metrics) -> Self {
         Self {
             http: Client::builder()
                 .timeout(REQUEST_TIMEOUT)
                 .build()
                 .expect("valid reqwest client config"),
-            config_server_url,
+            discovery,
             producer: Arc::new(producer),
             topic,
             metrics,
@@ -65,18 +54,15 @@ impl Downstream {
         &self.metrics
     }
 
-    /// Look up `service` in the config-server and try its instances in random
-    /// order; return the first success (or the last error if all fail).
-    ///
-    /// Only the calls to the service itself are timed, not the lookup.
+    /// Look up the ready pods of `service` and try them in random order;
+    /// return the first success (or the last error if all fail).
     async fn call<T: DeserializeOwned>(
         &self,
         service: &str,
         target: Target,
         request: impl Fn(&str) -> RequestBuilder,
     ) -> Result<T, FacadeError> {
-        let mut urls =
-            config_server::addresses(&self.http, &self.config_server_url, service).await?;
+        let mut urls = self.discovery.addresses(service);
         urls.shuffle(&mut rand::rng());
 
         let start = Instant::now();
@@ -114,9 +100,6 @@ impl Downstream {
         .await
     }
 
-    /// Queue a transaction for counter-service: returns once Kafka has
-    /// stored it (acks=all), without waiting for the counter to apply it.
-    /// Keyed by `user_id`, so one account's transactions stay in order.
     pub async fn publish(&self, tx: &Transaction) -> Result<(), FacadeError> {
         let value = serde_json::to_vec(tx).expect("transaction serializes to JSON");
         let record = Record::new(self.topic.as_str(), value).key(tx.user_id.clone());
