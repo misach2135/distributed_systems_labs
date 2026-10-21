@@ -7,6 +7,7 @@ stringData:
   POSTGRES_USER: bank
   POSTGRES_PASSWORD: bank
   POSTGRES_DB: bank
+  DATABASE_URL: postgres://bank:bank@postgres/bank
 ---
 apiVersion: v1
 kind: Service

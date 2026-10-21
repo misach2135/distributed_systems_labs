@@ -14,18 +14,24 @@ impl BalanceStore {
     /// Connect to Postgres and create the tables if they are missing.
     pub async fn connect(url: &str) -> sqlx::Result<Self> {
         let pool = PgPool::connect(url).await?;
+        let mut tx = pool.begin().await?;
+        // Lock that lives until the end of the tx.
+        sqlx::query("SELECT pg_advisory_xact_lock(1)")
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS accounts (
                 user_id TEXT PRIMARY KEY,
                 balance DOUBLE PRECISION NOT NULL
             )",
         )
-        .execute(&pool)
+        .execute(&mut *tx)
         .await?;
         // Ids of transactions already applied from Kafka (see `apply_once`).
         sqlx::query("CREATE TABLE IF NOT EXISTS processed_txs (transaction_id UUID PRIMARY KEY)")
-            .execute(&pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(Self { pool })
     }
 

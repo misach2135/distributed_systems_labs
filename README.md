@@ -1,4 +1,4 @@
-# Task 5 — Microservices with Message Queue (Kafka) and Config Server
+# Task 5 — Microservices in Kubernetes
 
 Report: `report/`.
 
@@ -8,53 +8,52 @@ Report: `report/`.
 uv venv
 uv pip install -r requirements.txt
 
-C="docker compose -f infra/docker-compose.yaml"
+minikube start --driver=docker --container-runtime=docker --cpus=6 --memory=8g
+# optional: copy infra images from Docker Desktop instead of pulling them
+for i in postgres:17-alpine apache/kafka:4.3.2 hazelcast/hazelcast:5.4.0 hazelcast/management-center:5.4.1; do minikube image load $i; done
+```
+
+## Build
+
+Images are built inside minikube, so Kubernetes uses them without a registry:
+
+```bash
+eval $(minikube docker-env)                                          # docker CLI -> minikube
+docker build -t ds-facade -f services/rust/facade/Dockerfile .
+docker build -t ds-counter -f services/rust/counter/Dockerfile .
+docker build -t ds-logger services/py/logger
+eval $(minikube docker-env -u)                                       # docker CLI -> Docker Desktop
 ```
 
 ## Run
 
-facade :8080, config-server :8003, 3 × logger (Hazelcast Map), counter (PostgreSQL, reads from Kafka), Kafka, Hazelcast × 3, Management Center (http://localhost:8090):
+Namespace `ds`: facade × 2, logger × 3 (Hazelcast Map), counter × 2 (PostgreSQL, reads from Kafka), Kafka, Hazelcast × 3, Management Center:
 
 ```bash
-$C up -d --build
+kubectl apply -f infra/k8s/namespace.yaml
+kubectl apply -f infra/k8s/
+kubectl -n ds get pods                                               # wait until all are Running 1/1
+minikube tunnel                                                      # separate terminal: facade on localhost:8080
+kubectl -n ds port-forward svc/management-center 8090:8080           # separate terminal: http://localhost:8090
 ```
 
-## Config server
+After rebuilding an image: `kubectl -n ds rollout restart deploy/<facade|counter|logger>`.
+
+## Discovery
 
 ```bash
-curl localhost:8003/services/logger                             # addresses of registered loggers
-curl localhost:8003/services/counter
-curl localhost:8003/services/facade
+kubectl -n ds get endpointslices                                     # ready pod IPs behind every Service
+kubectl -n ds logs deploy/facade | grep 'endpoints updated'          # what the facade sees
 ```
 
 ## Requests
 
 ```bash
 for i in $(seq 1 10); do curl -X POST localhost:8080/transaction --data "{user1, +$i}"; echo; done   # 10 transactions
-curl localhost:8080/user/user1                                  # balance + transactions of a user
-curl localhost:8080/accounts                                    # all balances
-$C logs logger-1 logger-2 logger-3 | grep stored                # which logger got which transaction
-$C logs counter-service | grep applied                          # transactions applied from Kafka
+curl localhost:8080/user/user1                                       # balance + transactions of a user
+curl localhost:8080/accounts                                         # all balances
+kubectl -n ds logs -l app=logger --prefix --tail=-1 | grep stored              # which logger got which transaction
+kubectl -n ds logs -l app=counter --prefix --tail=-1 | grep applied            # transactions applied from Kafka
 ```
 
-## Fault tolerance
-
-```bash
-docker pause ds-counter-service-1           # POSTs still succeed (queued in Kafka), GETs fail
-docker unpause ds-counter-service-1         # counter applies the queued transactions
-$C stop logger-1 logger-2                   # facade switches to the remaining logger
-$C start logger-1 logger-2
-```
-
-## Load test
-
-```bash
-$C exec postgres psql -U bank -d bank -c 'truncate accounts, processed_txs;'   # reset balances
-uv run tests/load_test.py                                                      # 10 clients × 10 000 tx, both scenarios
-```
-
-Stop: `$C down` (`$C down -v` also wipes PostgreSQL and Kafka data).
-
-```bash
-minikube start --driver=docker --container-runtime=docker --cpus=6 --memory=8g
-```
+Stop: `minikube stop` (`minikube delete` also wipes PostgreSQL and Kafka data).
