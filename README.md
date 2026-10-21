@@ -56,4 +56,35 @@ kubectl -n ds logs -l app=logger --prefix --tail=-1 | grep stored              #
 kubectl -n ds logs -l app=counter --prefix --tail=-1 | grep applied            # transactions applied from Kafka
 ```
 
+## Fault tolerance
+
+```bash
+P=$(kubectl -n ds get pods -l app=logger -o name | head -1 | cut -d/ -f2)     # one logger pod
+eval $(minikube docker-env)
+C=$(docker ps -q -f label=io.kubernetes.pod.name=$P -f label=io.kubernetes.container.name=logger)
+docker pause $C                                                      # instance stops answering
+kubectl -n ds get pods -l app=logger                                 # after ~9 s: 0/1 (readiness probe failed)
+kubectl -n ds get endpointslice -l kubernetes.io/service-name=logger \
+  -o jsonpath='{range .items[*].endpoints[*]}{.targetRef.name} ready={.conditions.ready}{"\n"}{end}'
+for i in $(seq 1 10); do curl -X POST localhost:8080/transaction --data "{user2, +1}"; echo; done   # still served by the others
+docker unpause $C                                                    # back to 1/1 (without it, liveness restarts the pod after ~30 s)
+eval $(minikube docker-env -u)
+
+kubectl -n ds delete pod $P                                          # Deployment creates a replacement
+kubectl -n ds scale deploy/counter --replicas=1                      # fewer instances
+kubectl -n ds scale deploy/counter --replicas=2
+kubectl -n ds logs deploy/facade | grep 'endpoints updated'          # facade sees every change
+```
+
+## Load test
+
+`/metrics` lives in each facade pod, so the test runs against a single replica:
+
+```bash
+kubectl -n ds scale deploy/facade --replicas=1
+kubectl -n ds exec postgres-0 -- psql -U bank -d bank -c 'truncate accounts, processed_txs;'   # reset balances
+uv run tests/load_test.py                                            # 10 clients × 10 000 tx, both scenarios
+kubectl -n ds scale deploy/facade --replicas=2
+```
+
 Stop: `minikube stop` (`minikube delete` also wipes PostgreSQL and Kafka data).
