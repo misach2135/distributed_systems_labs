@@ -7,16 +7,21 @@ use tracing::{info, warn};
 
 use common::Registration;
 
+/// How many times to try registering before giving up.
+const MAX_ATTEMPTS: u32 = 10;
+
 /// Register this instance (`address`) of `service` in the config-server.
-///
-/// Retries every second until the config-server answers, so services can
-/// start in any order.
-pub async fn register(config_server_url: &str, service: &str, address: &str) {
+pub async fn register(
+    config_server_url: &str,
+    service: &str,
+    address: &str,
+) -> Result<(), reqwest::Error> {
     let http = reqwest::Client::new();
     let registration = Registration {
         service: service.to_string(),
         address: address.to_string(),
     };
+    let mut attempt = 1;
     loop {
         let result = http
             .post(format!("{config_server_url}/register"))
@@ -27,12 +32,14 @@ pub async fn register(config_server_url: &str, service: &str, address: &str) {
         match result {
             Ok(_) => {
                 info!(service, address, "registered in config-server");
-                return;
+                return Ok(());
             }
-            Err(e) => {
-                warn!(error = %e, "config-server unavailable, retrying");
+            Err(e) if attempt < MAX_ATTEMPTS => {
+                warn!(error = %e, attempt, "config-server unavailable, retrying");
+                attempt += 1;
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
+            Err(e) => return Err(e),
         }
     }
 }

@@ -32,17 +32,22 @@ client = hazelcast.HazelcastClient(
 transactions = client.get_map("transactions").blocking()
 
 
+MAX_ATTEMPTS = 10
+
+
 def register() -> None:
-    """Register this instance in the config-server, retrying until it answers."""
+    """Register this instance in the config-server."""
     url = f"{os.environ['CONFIG_SERVER_URL']}/register"
     body = json.dumps({"service": "logger", "address": os.environ["SERVICE_URL"]}).encode()
-    while True:
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             urllib.request.urlopen(urllib.request.Request(url, body, {"Content-Type": "application/json"}), timeout=5)
             log.info("%s registered in config-server as %s", NAME, os.environ["SERVICE_URL"])
             return
         except OSError as e:
-            log.warning("config-server unavailable (%s), retrying", e)
+            if attempt == MAX_ATTEMPTS:
+                raise
+            log.warning("config-server unavailable (%s), retry %d", e, attempt)
             time.sleep(1)
 
 

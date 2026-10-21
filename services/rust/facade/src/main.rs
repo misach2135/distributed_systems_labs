@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(&addr).await?;
 
     let service_url = env::var("SERVICE_URL").unwrap_or_else(|_| format!("http://{addr}"));
-    connectors::config_server::register(&config_server_url, "facade", &service_url).await;
+    connectors::config_server::register(&config_server_url, "facade", &service_url).await?;
 
     info!(%addr, %config_server_url, %kafka_bootstrap, %kafka_topic, "facade-service listening");
 

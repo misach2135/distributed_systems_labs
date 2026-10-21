@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     let config_server_url =
         env::var("CONFIG_SERVER_URL").unwrap_or_else(|_| "http://localhost:8003".to_string());
     let service_url = env::var("SERVICE_URL").unwrap_or_else(|_| format!("http://{addr}"));
-    connectors::config_server::register(&config_server_url, "counter", &service_url).await;
+    connectors::config_server::register(&config_server_url, "counter", &service_url).await?;
 
     info!(%addr, "counter-service listening");
 
